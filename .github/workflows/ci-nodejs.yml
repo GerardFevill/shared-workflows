@@ -115,7 +115,7 @@ jobs:
     name: "\U0001F433 Build & Push Docker"
     needs: [test, security]
     runs-on: ubuntu-latest
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && secrets.DOCKERHUB_USERNAME != ''
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     steps:
       - uses: actions/checkout@v4
 
