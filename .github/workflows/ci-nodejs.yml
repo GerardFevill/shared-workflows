@@ -124,8 +124,11 @@ jobs:
         run: |
           BRANCH=${GITHUB_REF##*/}
           SHA=${GITHUB_SHA::8}
+          REPO_NAME=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME}${{ inputs.image-suffix }}"
           echo "tag=${BRANCH}-${SHA}" >> $GITHUB_OUTPUT
           echo "latest_tag=${BRANCH}-latest" >> $GITHUB_OUTPUT
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -139,8 +142,8 @@ jobs:
           context: ${{ inputs.working-directory }}
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}${{ inputs.image-suffix }}:${{ steps.tag.outputs.tag }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}${{ inputs.image-suffix }}:${{ steps.tag.outputs.latest_tag }}
+            ${{ steps.tag.outputs.image }}:${{ steps.tag.outputs.tag }}
+            ${{ steps.tag.outputs.image }}:${{ steps.tag.outputs.latest_tag }}
 
   # ---- ÉTAPE 4 : Notification ----
   notify:
@@ -150,9 +153,9 @@ jobs:
     if: always()
     steps:
       - name: Summary
-        env:
-          IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}${{ inputs.image-suffix }}
         run: |
+          REPO_NAME=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME}${{ inputs.image-suffix }}"
           echo "## 🚀 Déploiement Node.js" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: ${IMAGE_NAME}" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${GITHUB_REF##*/}" >> $GITHUB_STEP_SUMMARY
