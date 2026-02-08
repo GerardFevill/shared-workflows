@@ -1,0 +1,134 @@
+# ============================================================
+# CI/CD Pipeline - Node.js Backend
+# ============================================================
+# Usage: Copier ce fichier dans .github/workflows/ de ton projet
+# Secrets requis: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
+# ============================================================
+
+name: CI/CD Node.js
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+  NODE_VERSION: '20'
+
+jobs:
+  # ---- ÉTAPE 1 : Lint & Tests ----
+  test:
+    name: 🧪 Lint & Tests
+    runs-on: ubuntu-latest
+    services:
+      # Base de données pour les tests d'intégration (optionnel)
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Unit Tests
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/testdb
+
+      - name: Integration Tests
+        run: npm run test:e2e --if-present
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/testdb
+
+  # ---- ÉTAPE 2 : Security Audit ----
+  security:
+    name: 🔒 Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  # ---- ÉTAPE 3 : Build Docker & Push ----
+  build-and-push:
+    name: 🐳 Build & Push Docker
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: tag
+        run: |
+          BRANCH=${GITHUB_REF##*/}
+          SHA=${GITHUB_SHA::8}
+          echo "tag=${BRANCH}-${SHA}" >> $GITHUB_OUTPUT
+          echo "latest_tag=${BRANCH}-latest" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+            ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.latest_tag }}
+
+  # ---- ÉTAPE 4 : Notification ----
+  notify:
+    name: 📢 Notification
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## 🚀 Déploiement Node.js" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${GITHUB_REF##*/}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Pull en local:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.IMAGE_NAME }}:${GITHUB_REF##*/}-latest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
