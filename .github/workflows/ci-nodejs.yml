@@ -33,9 +33,9 @@ on:
         default: ''
     secrets:
       DOCKERHUB_USERNAME:
-        required: true
+        required: false
       DOCKERHUB_TOKEN:
-        required: true
+        required: false
 
 jobs:
   # ---- ÉTAPE 1 : Lint & Tests ----
@@ -115,7 +115,7 @@ jobs:
     name: "\U0001F433 Build & Push Docker"
     needs: [test, security]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && secrets.DOCKERHUB_USERNAME != ''
     steps:
       - uses: actions/checkout@v4
 
